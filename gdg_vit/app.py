@@ -45,6 +45,27 @@ num_layers = st.sidebar.slider("QAOA Layers (Depth)", min_value=1, max_value=5, 
 # Restrict seed to a safe 32-bit integer range to avoid overflow
 seed = st.sidebar.number_input("Random Seed", value=42, step=1, max_value=2**31 - 1)
 
+# Quantum Backend Selection
+st.sidebar.subheader("Quantum Backend")
+backend_options = ["simulator (local)", "ibm_brisbane", "ibm_kyoto", "ibm_osaka", "ibm_sherbrooke"]
+quantum_backend = st.sidebar.selectbox(
+    "Backend", 
+    backend_options,
+    help="Choose 'simulator' for fast local simulation, or select an IBM Quantum system for real hardware execution."
+)
+
+# IBM Quantum Token (only show if real hardware selected)
+ibm_token = None
+if quantum_backend != "simulator (local)":
+    st.sidebar.warning("⚡ Real quantum hardware selected! Execution may take several minutes due to queue times.")
+    ibm_token = st.sidebar.text_input(
+        "IBM Quantum Token", 
+        type="password",
+        help="Get your free token at quantum.ibm.com"
+    )
+    if not ibm_token:
+        st.sidebar.info("💡 Get your free API token at [quantum.ibm.com](https://quantum.ibm.com)")
+
 st.sidebar.subheader("Classical Benchmarks")
 classical_method = st.sidebar.selectbox("Classical Solver", ["Gurobi (Optimal)", "Brute Force (Exponential)"])
 
@@ -182,9 +203,15 @@ if run_btn:
     # Quantum
     start_q = time.time()
     try:
-        cost_qaoa_raw, sol_bitstring = qaoa(G_custom, layer_count=num_layers)
+        # Pass backend selection and IBM token for real hardware
+        cost_qaoa_raw, sol_bitstring = qaoa(
+            G_custom, 
+            layer_count=num_layers,
+            backend_name=quantum_backend,
+            ibm_token=ibm_token
+        )
     except Exception as e:
-        st.error(f"Quantum simulation failed (Check cudaq setup): {e}")
+        st.error(f"Quantum simulation failed: {e}")
         st.stop()
     end_q = time.time()
     

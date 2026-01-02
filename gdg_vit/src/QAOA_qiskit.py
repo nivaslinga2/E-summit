@@ -1,22 +1,75 @@
 # Qiskit-based QAOA implementation for Max-Cut
-# This replaces the CUDA-Q mock with real quantum simulation
+# Supports both local simulation AND real IBM Quantum hardware!
 
 import numpy as np
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from src.utilities import Graph, get_cost
+import os
 
 # Try to import Qiskit modules (Qiskit 2.x compatible)
 try:
     from qiskit import QuantumCircuit
     from qiskit.primitives import StatevectorSampler
     from qiskit_algorithms import QAOA
-    from qiskit_algorithms.optimizers import COBYLA
+    from qiskit_algorithms.optimizers import COBYLA, SPSA
     from qiskit.quantum_info import SparsePauliOp
     QISKIT_AVAILABLE = True
-    print("✅ Qiskit loaded successfully - Using REAL quantum simulation!")
 except ImportError as e:
     QISKIT_AVAILABLE = False
-    print(f"⚠️ Qiskit not available: {e}. Using fallback greedy algorithm.")
+
+# Try to import IBM Runtime for real hardware
+try:
+    from qiskit_ibm_runtime import QiskitRuntimeService, SamplerV2 as IBMSampler
+    IBM_AVAILABLE = True
+except ImportError:
+    IBM_AVAILABLE = False
+
+# Global variable to store the service
+_ibm_service = None
+
+
+def get_ibm_service(token: Optional[str] = None) -> Optional['QiskitRuntimeService']:
+    """
+    Get or create IBM Quantum service connection.
+    Token can be passed directly or set via IBM_QUANTUM_TOKEN environment variable.
+    """
+    global _ibm_service
+    
+    if not IBM_AVAILABLE:
+        return None
+    
+    if _ibm_service is not None:
+        return _ibm_service
+    
+    # Try to get token from parameter, env var, or saved credentials
+    api_token = token or os.environ.get('IBM_QUANTUM_TOKEN')
+    
+    try:
+        if api_token:
+            # Save credentials for future use
+            QiskitRuntimeService.save_account(channel="ibm_quantum", token=api_token, overwrite=True)
+            _ibm_service = QiskitRuntimeService(channel="ibm_quantum")
+        else:
+            # Try to use saved credentials
+            _ibm_service = QiskitRuntimeService(channel="ibm_quantum")
+        return _ibm_service
+    except Exception as e:
+        print(f"Could not connect to IBM Quantum: {e}")
+        return None
+
+
+def list_available_backends(token: Optional[str] = None) -> List[str]:
+    """List available IBM Quantum backends."""
+    service = get_ibm_service(token)
+    if service is None:
+        return ["simulator (local)"]
+    
+    try:
+        backends = service.backends()
+        backend_names = ["simulator (local)"] + [b.name for b in backends if b.status().operational]
+        return backend_names
+    except Exception:
+        return ["simulator (local)"]
 
 
 def create_maxcut_hamiltonian(edges: List[Tuple[int, int]], num_qubits: int) -> 'SparsePauliOp':
@@ -47,9 +100,15 @@ def create_maxcut_hamiltonian(edges: List[Tuple[int, int]], num_qubits: int) -> 
     return SparsePauliOp(pauli_list, coeffs).simplify()
 
 
-def qaoa_qiskit(G: Graph, layer_count: int = 1, shots: int = 1000) -> Tuple[float, str]:
+def qaoa_qiskit(
+    G: Graph, 
+    layer_count: int = 1, 
+    shots: int = 1000,
+    backend_name: str = "simulator",
+    ibm_token: Optional[str] = None
+) -> Tuple[float, str]:
     """
-    Run QAOA using Qiskit's quantum simulator.
+    Run QAOA using Qiskit's quantum simulator or IBM Quantum hardware.
     
     Parameters
     ----------
@@ -59,6 +118,10 @@ def qaoa_qiskit(G: Graph, layer_count: int = 1, shots: int = 1000) -> Tuple[floa
         Number of QAOA layers (depth)
     shots : int
         Number of measurement shots
+    backend_name : str
+        "simulator" for local simulation, or IBM backend name (e.g., "ibm_brisbane")
+    ibm_token : str, optional
+        IBM Quantum API token (can also use IBM_QUANTUM_TOKEN env var)
         
     Returns
     -------
@@ -66,7 +129,7 @@ def qaoa_qiskit(G: Graph, layer_count: int = 1, shots: int = 1000) -> Tuple[floa
         (cost, bitstring) - the Max-Cut value and the optimal partition
     """
     if not QISKIT_AVAILABLE:
-        raise ImportError("Qiskit is not installed. Please install with: pip install qiskit qiskit-algorithms")
+        raise ImportError("Qiskit is not installed.")
     
     num_qubits = G.n_v
     edges = [(e[0], e[1]) for e in G.e]
@@ -78,10 +141,31 @@ def qaoa_qiskit(G: Graph, layer_count: int = 1, shots: int = 1000) -> Tuple[floa
     # Create Hamiltonian
     hamiltonian = create_maxcut_hamiltonian(edges, num_qubits)
     
-    # Create QAOA instance with StatevectorSampler (Qiskit 2.x)
-    sampler = StatevectorSampler()
-    optimizer = COBYLA(maxiter=100)
+    # Choose backend
+    use_real_hardware = backend_name != "simulator" and "local" not in backend_name.lower()
     
+    if use_real_hardware and IBM_AVAILABLE:
+        print(f"🔬 Running on REAL IBM Quantum hardware: {backend_name}")
+        service = get_ibm_service(ibm_token)
+        if service is None:
+            print("⚠️ Could not connect to IBM Quantum. Falling back to simulator.")
+            use_real_hardware = False
+        else:
+            try:
+                backend = service.backend(backend_name)
+                sampler = IBMSampler(backend)
+                # Use SPSA optimizer for noisy hardware (more robust)
+                optimizer = SPSA(maxiter=50)
+            except Exception as e:
+                print(f"⚠️ Backend {backend_name} not available: {e}. Falling back to simulator.")
+                use_real_hardware = False
+    
+    if not use_real_hardware:
+        print("💻 Running on local quantum simulator")
+        sampler = StatevectorSampler()
+        optimizer = COBYLA(maxiter=100)
+    
+    # Create and run QAOA
     qaoa_solver = QAOA(
         sampler=sampler,
         optimizer=optimizer,
@@ -89,7 +173,6 @@ def qaoa_qiskit(G: Graph, layer_count: int = 1, shots: int = 1000) -> Tuple[floa
         initial_point=np.random.uniform(-np.pi/4, np.pi/4, 2 * layer_count)
     )
     
-    # Run QAOA
     result = qaoa_solver.compute_minimum_eigenvalue(hamiltonian)
     
     # Get the best bitstring from the result
@@ -98,18 +181,14 @@ def qaoa_qiskit(G: Graph, layer_count: int = 1, shots: int = 1000) -> Tuple[floa
     else:
         # Fallback: Use eigenstate to get most likely bitstring
         if hasattr(result, 'eigenstate') and result.eigenstate is not None:
-            # Sample from the eigenstate
             from qiskit.quantum_info import Statevector
             if isinstance(result.eigenstate, dict):
-                # It's already a counts dictionary
                 best_bitstring = max(result.eigenstate, key=result.eigenstate.get)
             else:
-                # It's a statevector - sample from it
                 sv = Statevector(result.eigenstate)
                 counts = sv.sample_counts(shots)
                 best_bitstring = max(counts, key=counts.get)
         else:
-            # Last resort: use greedy
             return qaoa_mock(G, layer_count, shots)
     
     # Calculate the actual cut value
@@ -118,19 +197,27 @@ def qaoa_qiskit(G: Graph, layer_count: int = 1, shots: int = 1000) -> Tuple[floa
     return float(cost), best_bitstring
 
 
-def qaoa(G: Graph, layer_count: int = 1, shots: int = 1000, const: float = 0, save_file: bool = False) -> Tuple[float, str]:
+def qaoa(
+    G: Graph, 
+    layer_count: int = 1, 
+    shots: int = 1000, 
+    const: float = 0, 
+    save_file: bool = False,
+    backend_name: str = "simulator",
+    ibm_token: Optional[str] = None
+) -> Tuple[float, str]:
     """
     Wrapper function to maintain compatibility with existing code.
     Automatically uses Qiskit if available, otherwise falls back to mock.
     """
     if QISKIT_AVAILABLE:
         try:
-            return qaoa_qiskit(G, layer_count=layer_count, shots=shots)
+            return qaoa_qiskit(G, layer_count=layer_count, shots=shots, 
+                             backend_name=backend_name, ibm_token=ibm_token)
         except Exception as e:
             print(f"Qiskit QAOA failed: {e}. Falling back to mock.")
             return qaoa_mock(G, layer_count=layer_count, shots=shots)
     else:
-        # Fallback to mock implementation
         return qaoa_mock(G, layer_count=layer_count, shots=shots)
 
 
@@ -163,7 +250,6 @@ def qaoa_mock(G: Graph, layer_count: int = 1, shots: int = 1000) -> Tuple[float,
     while improved and iterations < max_iterations:
         improved = False
         for node in range(num_qubits):
-            # Count edges cut with current and flipped state
             current_cut = sum(1 for neighbor in adj[node] if partition[node] != partition[neighbor])
             flipped_cut = sum(1 for neighbor in adj[node] if partition[node] == partition[neighbor])
             
