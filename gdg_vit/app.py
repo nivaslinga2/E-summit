@@ -47,11 +47,22 @@ seed = st.sidebar.number_input("Random Seed", value=42, step=1, max_value=2**31 
 
 # Quantum Backend Selection
 st.sidebar.subheader("Quantum Backend")
-backend_options = ["simulator (local)", "ibm_brisbane", "ibm_kyoto", "ibm_osaka", "ibm_sherbrooke"]
+
+# Check if IBM Runtime is available
+try:
+    from src.QAOA_qiskit import IBM_AVAILABLE
+except:
+    IBM_AVAILABLE = False
+
+if IBM_AVAILABLE:
+    backend_options = ["simulator (local)", "ibm_brisbane", "ibm_kyoto", "ibm_osaka", "ibm_sherbrooke"]
+else:
+    backend_options = ["simulator (local)"]
+    
 quantum_backend = st.sidebar.selectbox(
     "Backend", 
     backend_options,
-    help="Choose 'simulator' for fast local simulation, or select an IBM Quantum system for real hardware execution."
+    help="Choose 'simulator' for fast local simulation. IBM hardware requires qiskit-ibm-runtime package."
 )
 
 # IBM Quantum Token (only show if real hardware selected)
