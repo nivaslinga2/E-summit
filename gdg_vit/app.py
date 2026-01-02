@@ -32,7 +32,7 @@ st.sidebar.header("Configuration")
 # Graph Settings
 st.sidebar.subheader("Graph Topology")
 graph_type = st.sidebar.selectbox("Type", ["Random 3-Regular", "Ring", "Star", "Erdos-Renyi"])
-n_nodes = st.sidebar.slider("Nodes (Qubits)", min_value=4, max_value=30, value=10, step=1)
+n_nodes = st.sidebar.slider("Nodes (Qubits)", min_value=4, max_value=20, value=10, step=1)
 if graph_type == "Erdos-Renyi":
     p_prob = st.sidebar.slider("Edge Probability", 0.1, 1.0, 0.5)
 
@@ -67,6 +67,7 @@ quantum_backend = st.sidebar.selectbox(
 
 # IBM Quantum Token (only show if real hardware selected)
 ibm_token = None
+ibm_token_valid = True
 if quantum_backend != "simulator (local)":
     st.sidebar.warning("⚡ Real quantum hardware selected! Execution may take several minutes due to queue times.")
     ibm_token = st.sidebar.text_input(
@@ -75,12 +76,18 @@ if quantum_backend != "simulator (local)":
         help="Get your free token at quantum.ibm.com"
     )
     if not ibm_token:
+        st.sidebar.error("❌ Token required for IBM hardware!")
         st.sidebar.info("💡 Get your free API token at [quantum.ibm.com](https://quantum.ibm.com)")
+        ibm_token_valid = False
+else:
+    # Simulator qubit limit warning
+    if n_nodes > 20:
+        st.sidebar.warning(f"⚠️ {n_nodes} qubits may be slow/fail on simulator. Recommend ≤20 for reliable results.")
 
 st.sidebar.subheader("Classical Benchmarks")
 classical_method = st.sidebar.selectbox("Classical Solver", ["Gurobi (Optimal)", "Brute Force (Exponential)"])
 
-run_btn = st.sidebar.button("🚀 Run Quantum Simulation", type="primary")
+run_btn = st.sidebar.button("🚀 Run Quantum Simulation", type="primary", disabled=(not ibm_token_valid and quantum_backend != "simulator (local)"))
 
 # --- Helper Functions ---
 
