@@ -8,13 +8,14 @@ import os
 import time
 
 # Add the repository root to sys.path so we can import src
-sys.path.append(os.getcwd())
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Import necessary functions from your source code
 try:
-    from src.utilities import generate_regular_3_graph, max_cut_gurobi, get_cost, Graph, brute_force_max_cut
-    from src.QAOA_qiskit import qaoa
-except ImportError:
+    from src.utilities import generate_regular_3_graph, max_cut_gurobi, get_cost, Graph, brute_force_max_cut, greedy_max_cut, GUROBI_AVAILABLE
+    from src.QAOA_qiskit import qaoa, QISKIT_AVAILABLE
+except ImportError as e:
+    st.error(f"Import error: {e}")
     st.error("Could not import modules from 'src'. Make sure you are running this from the root directory 'gdg_vit'.")
     st.stop()
 
@@ -85,7 +86,15 @@ else:
         st.sidebar.warning(f"⚠️ {n_nodes} qubits may be slow/fail on simulator. Recommend ≤20 for reliable results.")
 
 st.sidebar.subheader("Classical Benchmarks")
-classical_method = st.sidebar.selectbox("Classical Solver", ["Gurobi (Optimal)", "Brute Force (Exponential)"])
+
+# Show available solvers based on what's installed
+if GUROBI_AVAILABLE:
+    classical_options = ["Gurobi (Optimal)", "Greedy (Approximate)", "Brute Force (Exponential)"]
+else:
+    classical_options = ["Greedy (Approximate)", "Brute Force (Exponential)"]
+    st.sidebar.caption("💡 Gurobi not available. Using greedy approximation.")
+
+classical_method = st.sidebar.selectbox("Classical Solver", classical_options)
 
 run_btn = st.sidebar.button("🚀 Run Quantum Simulation", type="primary", disabled=(not ibm_token_valid and quantum_backend != "simulator (local)"))
 
@@ -210,12 +219,17 @@ if run_btn:
     start_g = time.time()
     if classical_method == "Brute Force (Exponential)":
         if n_nodes > 22:
-             st.warning("⚠️ Brute Force is too slow for N > 22! Switching to Gurobi automatically.")
-             gurobi_val, gurobi_partition = max_cut_gurobi(G_nx)
+             st.warning("⚠️ Brute Force is too slow for N > 22! Switching to Greedy.")
+             gurobi_val, gurobi_partition = greedy_max_cut(G_nx)
         else:
              gurobi_val, gurobi_partition = brute_force_max_cut(G_nx)
-    else:
+    elif classical_method == "Greedy (Approximate)":
+        gurobi_val, gurobi_partition = greedy_max_cut(G_nx)
+    elif classical_method == "Gurobi (Optimal)" and GUROBI_AVAILABLE:
         gurobi_val, gurobi_partition = max_cut_gurobi(G_nx)
+    else:
+        # Fallback to greedy
+        gurobi_val, gurobi_partition = greedy_max_cut(G_nx)
     end_g = time.time()
     
     # Quantum
