@@ -174,7 +174,7 @@ def qaoa_qiskit(
     if not use_real_hardware:
         print("💻 Running on local quantum simulator")
         sampler = StatevectorSampler()
-        optimizer = COBYLA(maxiter=100)
+        optimizer = COBYLA(maxiter=20)
     
     # Create and run QAOA
     qaoa_solver = QAOA(
