@@ -70,13 +70,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify(data),
             });
 
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.error || 'Simulation failed');
-            }
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error || 'Simulation failed');
+                }
+                const result = await response.json();
+                displayResults(result);
+            } else {
+                // If response is not JSON (e.g., HTML error page 500/504)
+                const text = await response.text();
+                console.error("Server returned non-JSON:", text);
 
-            const result = await response.json();
-            displayResults(result);
+                // Try to extract a meaningful error message from HTML title
+                const titleMatch = text.match(/<title>(.*?)<\/title>/i);
+                const title = titleMatch ? titleMatch[1] : 'Unknown Server Error';
+
+                throw new Error(`Server Error (${response.status}): ${title}. Check console for details.`);
+            }
 
         } catch (error) {
             alert(`Error: ${error.message}`);
