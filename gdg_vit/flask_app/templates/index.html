@@ -34,35 +34,17 @@
             <form id="configForm">
 
                 <div class="form-section">
-                    <span class="section-title">Graph Configuration</span>
+                    <span class="section-title">Route Configuration</span>
 
-                    <div class="input-group">
-                        <label class="input-label">Topology</label>
-                        <select id="graph_type" name="graph_type" class="md-select">
-                            <option value="Random 3-Regular">Random 3-Regular</option>
-                            <option value="Ring">Ring</option>
-                            <option value="Star">Star</option>
-                            <option value="Erdos-Renyi">Erdos-Renyi</option>
-                        </select>
-                    </div>
-
-                    <div class="input-group" id="prob-group" style="display:none;">
-                        <div class="md-slider-container">
-                            <div class="slider-label-row">
-                                <span>Edge Probability</span>
-                                <span id="p_prob_val">0.5</span>
-                            </div>
-                            <input type="range" id="p_prob" name="p_prob" min="0.1" max="1.0" step="0.1" value="0.5">
-                        </div>
-                    </div>
+                    <!-- Removed Topology Select as TSP is fully connected distance graph -->
 
                     <div class="input-group">
                         <div class="md-slider-container">
                             <div class="slider-label-row">
-                                <span>Nodes (Qubits)</span>
-                                <span id="n_nodes_val">10</span>
+                                <span>Cities (Max 5 due to N² Qubits)</span>
+                                <span id="n_nodes_val">4</span>
                             </div>
-                            <input type="range" id="n_nodes" name="n_nodes" min="4" max="20" value="10">
+                            <input type="range" id="n_nodes" name="n_nodes" min="3" max="5" value="4">
                         </div>
                     </div>
                 </div>

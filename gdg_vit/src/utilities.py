@@ -289,6 +289,41 @@ def generate_regular_3_graph(n_nodes, seed):
     edges = list(G.edges())
     return G, edges
 
+def generate_tsp_instance(n_nodes, seed):
+    """
+    Generate random TSP instance (2D coordinates).
+    """
+    np.random.seed(seed)
+    coords = np.random.rand(n_nodes, 2)
+    dist_matrix = np.zeros((n_nodes, n_nodes))
+    for i in range(n_nodes):
+        for j in range(n_nodes):
+            dist_matrix[i, j] = np.linalg.norm(coords[i] - coords[j])
+    return coords, dist_matrix
+
+def solve_tsp_brute_force(dist_matrix):
+    """
+    Solve TSP via brute force (O(N!)).
+    """
+    import itertools
+    n = len(dist_matrix)
+    nodes = list(range(n))
+    min_path = None
+    min_dist = float('inf')
+    
+    # Check all permutations starting at 0 to reduce N! to (N-1)!
+    for p in itertools.permutations(nodes[1:]):
+        path = [0] + list(p)
+        d = 0
+        for i in range(n):
+            d += dist_matrix[path[i], path[(i+1)%n]]
+        if d < min_dist:
+            min_dist = d
+            min_path = path
+            
+    return min_dist, min_path
+
+
 def cost_function_qaoa(results, edges):
  """
  This function calculates the cost of a max cut solution.
